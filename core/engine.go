@@ -1670,7 +1670,7 @@ func (e *Engine) ExecuteCronJob(job *CronJob) error {
 
 	if useNewSession {
 		msg.SessionKey = runSessionKey
-		session := sessions.NewSideSession(runSessionKey, "cron-"+job.ID)
+		session := sessions.NewSideSession(runSessionKey, cronSessionName(job, time.Now()))
 		lockGen, locked := session.TryLock()
 		if !locked {
 			return fmt.Errorf("session %q is busy", runSessionKey)
@@ -2092,6 +2092,14 @@ func cronRunTitle(job *CronJob) string {
 		return truncateStr(prompt, 60)
 	}
 	return "cron"
+}
+
+// cronSessionName names the side session created by a new_per_run cron job,
+// e.g. "Daily digest · 11-23 09:00". The previous "cron-<jobID>" made every
+// run of a job look identical in /list, so users could not tell which day's
+// run to /switch to.
+func cronSessionName(job *CronJob, at time.Time) string {
+	return cronRunTitle(job) + " · " + at.Format("01-02 15:04")
 }
 
 // executeCronShell runs a shell command for a cron job and sends the output.
