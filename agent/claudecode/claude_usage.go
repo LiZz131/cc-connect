@@ -41,8 +41,8 @@ type claudeUsageProbeState struct {
 	promptResponses int
 	sentWake        bool
 	sentUsage       bool
+	sentSubmit      bool
 	sentEnterRetry  bool
-	sentUsageRetry  bool
 	lastActionAt    time.Time
 	usageSentAt     time.Time
 }
@@ -252,23 +252,28 @@ func nextClaudeUsageProbeAction(screen string, state *claudeUsageProbeState, now
 		return "\r"
 	}
 
+	// Type the command and submit it in separate writes. Sending "/usage\r" in
+	// one chunk lets the slash-command autocomplete swallow the Enter (seen on
+	// Windows ConPTY), and re-typing "/usage" on retry then produced
+	// "/usage/usage", which Claude Code sent to the model as a normal prompt.
+	// So: type once, then only ever retry Enter.
 	if !state.sentUsage {
 		state.sentUsage = true
 		state.usageSentAt = now
 		state.lastActionAt = now
-		return "/usage\r"
+		return "/usage"
 	}
 
-	if !state.sentEnterRetry && now.Sub(state.usageSentAt) >= 900*time.Millisecond {
-		state.sentEnterRetry = true
+	if !state.sentSubmit && now.Sub(state.usageSentAt) >= 400*time.Millisecond {
+		state.sentSubmit = true
 		state.lastActionAt = now
 		return "\r"
 	}
 
-	if !state.sentUsageRetry && now.Sub(state.usageSentAt) >= 1500*time.Millisecond {
-		state.sentUsageRetry = true
+	if !state.sentEnterRetry && now.Sub(state.usageSentAt) >= 1500*time.Millisecond {
+		state.sentEnterRetry = true
 		state.lastActionAt = now
-		return "/usage\r"
+		return "\r"
 	}
 
 	return ""
@@ -280,7 +285,7 @@ func promptActionForScreen(screen string) string {
 		return ""
 	}
 	if strings.Contains(lower, "quick safety check") || strings.Contains(lower, "yes, i trust this folder") {
-		return "\r"
+		return trustPromptAction(lower)
 	}
 	if (strings.Contains(lower, "telemetry") || strings.Contains(lower, "help improve") || strings.Contains(lower, "usage data")) &&
 		(strings.Contains(lower, "2. no") || strings.Contains(lower, "2. disable") || strings.Contains(lower, "2. don't")) {
@@ -290,6 +295,32 @@ func promptActionForScreen(screen string) string {
 		return "\r"
 	}
 	return ""
+}
+
+// trustPromptAction answers the folder-trust dialog shown when the probe starts
+// Claude Code in its fresh temp directory. Older releases listed
+// "1. Yes, proceed" first (selected by default); newer releases list
+// "No, exit" first, so a bare Enter would quit the probe. Move the cursor (❯)
+// onto the "yes" option before confirming. The probe runs with no tools in an
+// empty temp dir, so trusting it is safe.
+func trustPromptAction(lower string) string {
+	cursor, yes := -1, -1
+	for i, line := range strings.Split(lower, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "❯") || strings.HasPrefix(trimmed, ">") {
+			cursor = i
+		}
+		if strings.Contains(trimmed, "yes, i trust this folder") || strings.Contains(trimmed, "yes, proceed") {
+			yes = i
+		}
+	}
+	if cursor < 0 || yes < 0 || cursor == yes {
+		return "\r"
+	}
+	if yes > cursor {
+		return strings.Repeat("\x1b[B", yes-cursor) + "\r"
+	}
+	return strings.Repeat("\x1b[A", cursor-yes) + "\r"
 }
 
 func usageReady(screen string) bool {
