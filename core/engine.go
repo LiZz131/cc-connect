@@ -10068,7 +10068,11 @@ func langDisplayName(lang Language) string {
 
 func (e *Engine) cmdHelp(p Platform, msg *Message) {
 	if !supportsCards(p) {
-		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgHelp))
+		text := e.i18n.T(MsgHelp)
+		if custom := e.customHelpText(); custom != "" {
+			text += "\n\n" + custom
+		}
+		e.reply(p, msg.ReplyCtx, text)
 		return
 	}
 	e.replyWithCard(p, msg.ReplyCtx, e.renderHelpCard())
@@ -10099,6 +10103,9 @@ const defaultHelpGroup = "session"
 type helpCardItem struct {
 	command string
 	action  string
+	// desc overrides the i18n description; used for custom commands, whose
+	// descriptions come from config or agent command files.
+	desc string
 }
 
 type helpCardGroup struct {
@@ -10175,6 +10182,59 @@ func helpCardGroups() []helpCardGroup {
 	}
 }
 
+// helpGroups returns the built-in help groups plus, when the project has any,
+// a "custom" group listing custom commands (config [[commands]] and agent
+// command files such as .claude/commands/*.md). Without it, custom commands
+// are only discoverable through /commands.
+func (e *Engine) helpGroups() []helpCardGroup {
+	groups := helpCardGroups()
+	if items := e.customHelpItems(); len(items) > 0 {
+		groups = append(groups, helpCardGroup{key: "custom", titleKey: MsgHelpCustomSection, items: items})
+	}
+	return groups
+}
+
+// customHelpItems lists enabled custom commands, sorted by name. Clicking an
+// item dispatches the command, like typing it.
+func (e *Engine) customHelpItems() []helpCardItem {
+	if e.commands == nil {
+		return nil
+	}
+	e.userRolesMu.RLock()
+	disabled := e.disabledCmds
+	e.userRolesMu.RUnlock()
+
+	cmds := e.commands.ListAll()
+	sort.Slice(cmds, func(i, j int) bool {
+		return strings.ToLower(cmds[i].Name) < strings.ToLower(cmds[j].Name)
+	})
+	items := make([]helpCardItem, 0, len(cmds))
+	for _, c := range cmds {
+		if c.Name == "" || disabled[strings.ToLower(c.Name)] {
+			continue
+		}
+		items = append(items, helpCardItem{command: "/" + c.Name, action: "cmd:/" + c.Name, desc: c.Description})
+	}
+	return items
+}
+
+// customHelpText renders the custom-command section for plain-text /help.
+func (e *Engine) customHelpText() string {
+	items := e.customHelpItems()
+	if len(items) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(e.i18n.T(MsgHelpCustomSection))
+	for _, it := range items {
+		sb.WriteString("\n" + it.command)
+		if it.desc != "" {
+			sb.WriteString(" — " + it.desc)
+		}
+	}
+	return sb.String()
+}
+
 func (e *Engine) renderHelpCard() *Card {
 	return e.renderHelpGroupCard(defaultHelpGroup)
 }
@@ -10207,11 +10267,15 @@ func (e *Engine) renderHelpGroupCard(groupKey string) *Card {
 	tabLabel := func(key MsgKey) string {
 		return strings.Trim(sectionTitle(key), "* ")
 	}
-	commandText := func(command string) string {
-		return "**" + command + "**  " + e.i18n.T(MsgKey(strings.TrimPrefix(command, "/")))
+	commandText := func(item helpCardItem) string {
+		desc := item.desc
+		if desc == "" {
+			desc = e.i18n.T(MsgKey(strings.TrimPrefix(item.command, "/")))
+		}
+		return "**" + item.command + "**  " + desc
 	}
 
-	groups := helpCardGroups()
+	groups := e.helpGroups()
 	current := groups[0]
 	normalizedGroup := strings.ToLower(strings.TrimSpace(groupKey))
 	for _, group := range groups {
@@ -10234,7 +10298,7 @@ func (e *Engine) renderHelpGroupCard(groupKey string) *Card {
 		cb.ButtonsEqual(row...)
 	}
 	for _, item := range current.items {
-		cb.ListItem(commandText(item.command), "▶", item.action)
+		cb.ListItem(commandText(item), "▶", item.action)
 	}
 	cb.Note(e.i18n.T(MsgHelpTip))
 	return cb.Build()

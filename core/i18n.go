@@ -247,6 +247,7 @@ const (
 	MsgHelpAgentSection          MsgKey = "help_agent_section"
 	MsgHelpToolsSection          MsgKey = "help_tools_section"
 	MsgHelpSystemSection         MsgKey = "help_system_section"
+	MsgHelpCustomSection         MsgKey = "help_custom_section"
 	MsgHelpTip                   MsgKey = "help_tip"
 	MsgListTitle                 MsgKey = "list_title"
 	MsgListTitlePaged            MsgKey = "list_title_paged"
@@ -1413,6 +1414,13 @@ var messages = map[MsgKey]map[Language]string{
 			"/skills — Listar skills del agente\n" +
 			"/compress — Comprimir contexto\n" +
 			"/stop — Detener ejecución actual",
+	},
+	MsgHelpCustomSection: {
+		LangEnglish:            "**Custom Commands**",
+		LangChinese:            "**自定义命令**",
+		LangTraditionalChinese: "**自訂命令**",
+		LangJapanese:           "**カスタムコマンド**",
+		LangSpanish:            "**Comandos personalizados**",
 	},
 	MsgHelpSystemSection: {
 		LangEnglish: "**System**\n" +
