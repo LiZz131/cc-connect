@@ -72,11 +72,13 @@ func (a *Agent) GetUsage(ctx context.Context) (*core.UsageReport, error) {
 		return nil, fmt.Errorf("claudecode: 'claude' CLI not found in PATH")
 	}
 
-	screen, err := a.runClaudeUsageProbe(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return parseClaudeUsageReport(screen, time.Now())
+	return a.usage.get(ctx, func(probeCtx context.Context) (*core.UsageReport, error) {
+		screen, err := a.runClaudeUsageProbe(probeCtx)
+		if err != nil {
+			return nil, err
+		}
+		return parseClaudeUsageReport(screen, time.Now())
+	})
 }
 
 func (a *Agent) runClaudeUsageProbe(ctx context.Context) (string, error) {
@@ -183,6 +185,7 @@ func (a *Agent) runClaudeUsageProbe(ctx context.Context) (string, error) {
 			if screenErr := detectClaudeUsageOutputError(lastScreen, stderr.String()); screenErr != nil {
 				return "", screenErr
 			}
+			slog.Warn("claudecode: usage probe timed out", "screen_tail", usageScreenTail(lastScreen, 600))
 			return "", fmt.Errorf("claudecode: timed out waiting for Claude Code /usage panel: %w", probeCtx.Err())
 		case err := <-readDone:
 			if err != nil {

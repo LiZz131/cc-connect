@@ -86,6 +86,10 @@ const closeTimeout = 150 * time.Second
 const (
 	replyFooterUsageTimeout  = 1500 * time.Millisecond
 	replyFooterUsageCacheTTL = 30 * time.Second
+	// usageCommandTimeout bounds the explicit /usage command. Some agents probe
+	// usage by starting their interactive CLI (Claude Code), whose cold start
+	// can exceed 10s on Windows.
+	usageCommandTimeout = 30 * time.Second
 )
 
 const (
@@ -9444,7 +9448,7 @@ func (e *Engine) cmdUsage(p Platform, msg *Message) {
 		return
 	}
 
-	fetchCtx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+	fetchCtx, cancel := context.WithTimeout(e.ctx, usageCommandTimeout)
 	defer cancel()
 
 	report, err := reporter.GetUsage(fetchCtx)

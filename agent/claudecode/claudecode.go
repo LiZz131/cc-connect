@@ -41,6 +41,7 @@ type Agent struct {
 	configEnv           []string // env vars from [projects.agent.options.env] — persists across SetSessionEnv calls
 	cmdArgsFlag         string   // if set, claude args are passed as a single string via this flag (e.g. "-a")
 	model               string
+	usage               usageCache // shared, cached /usage probe (see usage_cache.go)
 	reasoningEffort     string // "low" | "medium" | "high" | "max"
 	mode                string // "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions" | "dontAsk"
 	allowedTools        []string
