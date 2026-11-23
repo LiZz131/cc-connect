@@ -25,6 +25,8 @@ const (
 	claudeUsagePollInterval         = 100 * time.Millisecond
 	claudeUsageStableFor            = 450 * time.Millisecond
 	claudeUsageActionGap            = 250 * time.Millisecond
+	claudeUsageEnterRetryGap        = 1200 * time.Millisecond
+	claudeUsageMaxEnterRetries      = 15
 	claudeUsageRows                 = 40
 	claudeUsageCols                 = 120
 )
@@ -42,7 +44,7 @@ type claudeUsageProbeState struct {
 	sentWake        bool
 	sentUsage       bool
 	sentSubmit      bool
-	sentEnterRetry  bool
+	enterRetries    int
 	lastActionAt    time.Time
 	usageSentAt     time.Time
 }
@@ -279,8 +281,13 @@ func nextClaudeUsageProbeAction(screen string, state *claudeUsageProbeState, now
 		return "\r"
 	}
 
-	if !state.sentEnterRetry && now.Sub(state.usageSentAt) >= 1500*time.Millisecond {
-		state.sentEnterRetry = true
+	// Until the panel renders, keep pressing Enter at a steady pace. A slow
+	// host can drop the first Enter(s) while the slash-command menu is still
+	// opening (observed under a Windows service: "/usage" stayed typed with the
+	// menu open for the whole timeout). Enter on a complete slash command only
+	// ever submits it, so retrying is safe; usageReady stops the loop.
+	if state.enterRetries < claudeUsageMaxEnterRetries && now.Sub(state.lastActionAt) >= claudeUsageEnterRetryGap {
+		state.enterRetries++
 		state.lastActionAt = now
 		return "\r"
 	}
