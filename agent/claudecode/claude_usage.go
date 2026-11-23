@@ -77,7 +77,13 @@ func (a *Agent) GetUsage(ctx context.Context) (*core.UsageReport, error) {
 		if err != nil {
 			return nil, err
 		}
-		return parseClaudeUsageReport(screen, time.Now())
+		report, err := parseClaudeUsageReport(screen, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		// Agent env (project-level CLAUDE_CONFIG_DIR) takes precedence over the process env.
+		fillUsageAccount(report, claudeAccountFile(append(a.usageProbeEnv(), os.Environ()...)))
+		return report, nil
 	})
 }
 
